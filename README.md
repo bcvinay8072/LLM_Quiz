@@ -1,14 +1,4 @@
----
-title: LLM Analysis Quiz Solver
-emoji: 🏃
-colorFrom: red
-colorTo: blue
-sdk: docker
-pinned: false
-app_port: 7860
----
-
-# LLM Analysis - Autonomous Quiz Solver Agent
+# LLM Quiz Solver Agent
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
@@ -68,7 +58,7 @@ The project uses a **LangGraph state machine** architecture with the following c
 1. **FastAPI Server** (`main.py`): Handles incoming POST requests, validates secrets, and triggers the agent
 2. **LangGraph Agent** (`agent.py`): State machine that coordinates tool usage and decision-making
 3. **Tools Package** (`tools/`): Modular tools for different capabilities
-4. **LLM**: Google Gemini 2.5 Flash with rate limiting (9 requests per minute)
+4. **LLM**: Google Gemini 2.0 Flash with rate limiting (9 requests per minute)
 
 ## ✨ Features
 
