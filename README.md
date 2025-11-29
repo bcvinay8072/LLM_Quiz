@@ -1,379 +1,156 @@
-# LLM Quiz Solver Agent
+# LLM Quiz Solver Agent — Rewritten
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.121.3+-green.svg)](https://fastapi.tiangolo.com/)
+This repository contains an autonomous agent that programmatically solves multi-step, data-focused quiz tasks by combining a language model with small, focused tools for scraping, file handling, code execution, and result submission.
 
-An intelligent, autonomous agent built with LangGraph and LangChain that solves data-related quizzes involving web scraping, data processing, analysis, and visualization tasks. The system uses Google's Gemini 2.5 Flash model to orchestrate tool usage and make decisions.
+Badges
+- License: MIT
+- Requires: Python 3.12+
+- Framework: FastAPI
 
-## 📋 Table of Contents
+Table of contents
+- Quick summary
+- Design & components
+- What it does
+- Repo layout
+- Setup (local / Docker)
+- Configuration
+- Running it
+- API reference
+- Tools overview
+- Deployment notes
+- License & credits
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Endpoints](#api-endpoints)
-- [Tools &amp; Capabilities](#tools--capabilities)
-- [Docker Deployment](#docker-deployment)
-- [How It Works](#how-it-works)
-- [License](#license)
+Quick summary
+The agent accepts a quiz URL through an HTTP endpoint, inspects and navigates quiz pages, uses a language model to plan actions, runs targeted tools (scrapers, downloaders, small Python snippets), and can post answers to evaluation endpoints. It is meant as a research/demo project for automated data tasks and is configured to be run locally or inside a container.
 
-## 🔍 Overview
+Core ideas (short)
+- Orchestrator: a state-machine driven agent controls which tools run next.
+- Tools: single-purpose helpers (render web pages, fetch files, run Python, submit answers).
+- LLM: used to interpret instructions, plan the toolchain, and produce code when appropriate.
+- Background execution: long-running jobs are started asynchronously to avoid HTTP timeouts.
+- Extensible: add or replace tools and swap the LLM backend.
 
-This project was developed for the TDS (Tools in Data Science) course project, where the objective is to build an application that can autonomously solve multi-step quiz tasks involving:
+Design & components
+- Server: FastAPI app that exposes a /solve endpoint and a health check.
+- Agent: a LangGraph-based state machine implementing the decision logic and tool orchestration.
+- Tools: modular Python modules under tools/ (web renderer, downloader, code runner, poster, dependency manager).
+- Storage: downloaded assets are placed under LLMFiles/ during runtime.
+- LLM client: configured for Google Gemini or any compatible provider (API key via env).
 
-- **Data sourcing**: Scraping websites, calling APIs, downloading files
-- **Data preparation**: Cleaning text, PDFs, and various data formats
-- **Data analysis**: Filtering, aggregating, statistical analysis, ML models
-- **Data visualization**: Generating charts, narratives, and presentations
+What the system can do
+- Render JavaScript-heavy pages (Playwright).
+- Download files (PDF/CSV/images).
+- Generate and execute Python code in a sandboxed subprocess to transform and analyze data.
+- Submit structured answers to remote endpoints with handling for retries and failure modes.
+- Install Python packages on demand when a task requires extra libraries.
 
-The system receives quiz URLs via a REST API, navigates through multiple quiz pages, solves each task using LLM-powered reasoning and specialized tools, and submits answers back to the evaluation server.
+Repository layout
+LLM_Quiz/
+- main.py — HTTP server with endpoints and background task management
+- agent.py — agent orchestration logic and state machine
+- pyproject.toml — project dependencies and packaging
+- Dockerfile — image that bundles Playwright + runtime
+- tools/
+  - web_scraper.py
+  - download_file.py
+  - code_generate_and_run.py
+  - send_request.py
+  - add_dependencies.py
+- LLMFiles/ — runtime-only directory for downloaded assets (not checked in)
+- README.md — this file
 
-## 🏗️ Architecture
+Getting started (minimal)
+1. Clone:
+   git clone https://github.com/bcvinay8072/LLM_Quiz.git
+   cd LLM_Quiz
 
-The project uses a **LangGraph state machine** architecture with the following components:
+2. Create and activate a virtual environment:
+   python -m venv venv
+   # Windows
+   .\venv\Scripts\activate
+   # macOS / Linux
+   source venv/bin/activate
 
-```
-┌─────────────┐
-│   FastAPI   │  ← Receives POST requests with quiz URLs
-│   Server    │
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Agent     │  ← LangGraph orchestrator with Gemini 2.5 Flash
-│   (LLM)     │
-└──────┬──────┘
-       │
-       ├────────────┬────────────┬─────────────┬──────────────┐
-       ▼            ▼            ▼             ▼              ▼
-   [Scraper]   [Downloader]  [Code Exec]  [POST Req]  [Add Deps]
-```
+3. Install:
+   pip install -e .
+   playwright install chromium
 
-### Key Components:
+Running locally
+- Start the server:
+  python main.py
+- The default host/port is 0.0.0.0:7860 (can be changed in code/config).
 
-1. **FastAPI Server** (`main.py`): Handles incoming POST requests, validates secrets, and triggers the agent
-2. **LangGraph Agent** (`agent.py`): State machine that coordinates tool usage and decision-making
-3. **Tools Package** (`tools/`): Modular tools for different capabilities
-4. **LLM**: Google Gemini 2.0 Flash with rate limiting (9 requests per minute)
-
-## ✨ Features
-
-- ✅ **Autonomous multi-step problem solving**: Chains together multiple quiz pages
-- ✅ **Dynamic JavaScript rendering**: Uses Playwright for client-side rendered pages
-- ✅ **Code generation & execution**: Writes and runs Python code for data tasks
-- ✅ **Flexible data handling**: Downloads files, processes PDFs, CSVs, images, etc.
-- ✅ **Self-installing dependencies**: Automatically adds required Python packages
-- ✅ **Robust error handling**: Retries failed attempts within time limits
-- ✅ **Docker containerization**: Ready for deployment on HuggingFace Spaces or cloud platforms
-- ✅ **Rate limiting**: Respects API quotas with exponential backoff
-
-## 📁 Project Structure
-
-```
-LLM-Analysis-TDS-Project-2/
-├── agent.py                    # LangGraph state machine & orchestration
-├── main.py                     # FastAPI server with /solve endpoint
-├── pyproject.toml              # Project dependencies & configuration
-├── Dockerfile                  # Container image with Playwright
-├── .env                        # Environment variables (not in repo)
-├── tools/
-│   ├── __init__.py
-│   ├── web_scraper.py          # Playwright-based HTML renderer
-│   ├── code_generate_and_run.py # Python code executor
-│   ├── download_file.py        # File downloader
-│   ├── send_request.py         # HTTP POST tool
-│   └── add_dependencies.py     # Package installer
-└── README.md
-```
-
-## 📦 Installation
-
-### Prerequisites
-
-- Python 3.12 or higher
-- [uv](https://github.com/astral-sh/uv) package manager (recommended) or pip
-- Git
-
-### Step 1: Clone the Repository
-
-```bash
-git clone https://github.com/saivijayragav/LLM-Analysis-TDS-Project-2.git
-cd LLM-Analysis-TDS-Project-2
-```
-
-### Step 2: Install Dependencies
-
-#### Option A: Using `uv` (Recommended)
-
-
-Ensure you have uv installed, then sync the project:
-
-```
-# Install uv if you haven't already  
-pip install uv
-
-# Sync dependencies  
-uv sync
-uv run playwright install chromium
-```
-
-Start the FastAPI server:
-```
-uv run main.py
-```
-The server will start at ```http://0.0.0.0:7860```.
-
-#### Option B: Using `pip`
-
-```bash
-# Create virtual environment
-python -m venv venv
-.\venv\Scripts\activate  # Windows
-# source venv/bin/activate  # macOS/Linux
-
-# Install dependencies
-pip install -e .
-
-# Install Playwright browsers
-playwright install chromium
-```
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-# Your credentials from the Google Form submission
-EMAIL=your.email@example.com
-SECRET=your_secret_string
-
-# Google Gemini API Key
-GOOGLE_API_KEY=your_gemini_api_key_here
-```
-
-### Getting a Gemini API Key
-
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Create a new API key
-3. Copy it to your `.env` file
-
-## 🚀 Usage
-
-### Local Development
-
-Start the FastAPI server:
-
-```bash
-# If using uv
-uv run main.py
-
-# If using standard Python
-python main.py
-```
-
-The server will start on `http://0.0.0.0:7860`
-
-### Testing the Endpoint
-
-Send a POST request to test your setup:
-
-```bash
+Quick test (submit a job)
 curl -X POST http://localhost:7860/solve \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "your.email@example.com",
-    "secret": "your_secret_string",
+    "email": "you@example.com",
+    "secret": "your_secret_value",
     "url": "https://tds-llm-analysis.s-anand.net/demo"
   }'
-```
 
-Expected response:
+The endpoint returns immediately with a small acknowledgement (e.g., {"status":"ok"}) while the agent processes the task in the background.
 
-```json
-{
-  "status": "ok"
-}
-```
+Environment variables
+Create a .env file in the project root (or export the vars in your environment):
 
-The agent will run in the background and solve the quiz chain autonomously.
+EMAIL=your.email@example.com
+SECRET=your_secret_string
+GOOGLE_API_KEY=your_gemini_api_key_here
 
-## 🌐 API Endpoints
+Notes on the LLM key
+- For Gemini: obtain a key from Google AI Studio and set GOOGLE_API_KEY.
+- The code is written so that another provider can be wired in with minimal changes.
 
-### `POST /solve`
+Docker
+- Build:
+  docker build -t llm-quiz-agent .
+- Run:
+  docker run -p 7860:7860 \
+    -e EMAIL="you@example.com" \
+    -e SECRET="your_secret" \
+    -e GOOGLE_API_KEY="your_api_key" \
+    llm-quiz-agent
 
-Receives quiz tasks and triggers the autonomous agent.
+Deploying to Hugging Face Spaces (Docker)
+1. Create a new Space configured for Docker.
+2. Push the repository to the Space.
+3. Set the EMAIL, SECRET, and GOOGLE_API_KEY secrets in the Space settings.
+4. The Space will build and run the container.
 
-**Request Body:**
+API reference
+POST /solve
+- Body:
+  {
+    "email": "you@example.com",
+    "secret": "your_secret",
+    "url": "https://example.com/quiz"
+  }
+- Responses:
+  - 200 OK — accepted and agent started
+  - 400 — malformed request
+  - 403 — invalid secret
 
-```json
-{
-  "email": "your.email@example.com",
-  "secret": "your_secret_string",
-  "url": "https://example.com/quiz-123"
-}
-```
+GET /healthz
+- Small health payload, e.g. {"status":"ok","uptime_seconds":123}
 
-**Responses:**
+Toolset (summary)
+- get_rendered_html — Playwright-based page rendering
+- download_file — fetches and saves external files
+- run_code — executes Python code in a subprocess and returns outputs
+- post_request — sends results to a submission endpoint with retries
+- add_dependencies — installs packages at runtime when needed
 
-| Status Code | Description                    |
-| ----------- | ------------------------------ |
-| `200`     | Secret verified, agent started |
-| `400`     | Invalid JSON payload           |
-| `403`     | Invalid secret                 |
+Operational considerations
+- Rate limits: the LLM client should enforce conservative throttling (example: 9 req/min as a suggested limit).
+- Safety: code executed by the agent runs in a subprocess; avoid running untrusted system commands and sandbox appropriately.
+- Monitoring: check logs for long-running tasks and failures; consider adding alerting around the background worker.
 
-### `GET /healthz`
+Auth & secrets
+- The server validates a simple shared SECRET before starting a job. For production use, replace this with proper authentication and secret management.
 
-Health check endpoint for monitoring.
+## License
+This project is licensed under the [MIT License](./LICENSE).
 
-**Response:**
-
-```json
-{
-  "status": "ok",
-  "uptime_seconds": 3600
-}
-```
-
-## 🛠️ Tools & Capabilities
-
-The agent has access to the following tools:
-
-### 1. **Web Scraper** (`get_rendered_html`)
-
-- Uses Playwright to render JavaScript-heavy pages
-- Waits for network idle before extracting content
-- Returns fully rendered HTML for parsing
-
-### 2. **File Downloader** (`download_file`)
-
-- Downloads files (PDFs, CSVs, images, etc.) from direct URLs
-- Saves files to `LLMFiles/` directory
-- Returns the saved filename
-
-### 3. **Code Executor** (`run_code`)
-
-- Executes arbitrary Python code in an isolated subprocess
-- Returns stdout, stderr, and exit code
-- Useful for data processing, analysis, and visualization
-
-### 4. **POST Request** (`post_request`)
-
-- Sends JSON payloads to submission endpoints
-- Includes automatic error handling and response parsing
-- Prevents resubmission if answer is incorrect and time limit exceeded
-
-### 5. **Dependency Installer** (`add_dependencies`)
-
-- Dynamically installs Python packages as needed
-- Uses `uv add` for fast package resolution
-- Enables the agent to adapt to different task requirements
-
-## 🐳 Docker Deployment
-
-### Build the Image
-
-```bash
-docker build -t llm-analysis-agent .
-```
-
-### Run the Container
-
-```bash
-docker run -p 7860:7860 \
-  -e EMAIL="your.email@example.com" \
-  -e SECRET="your_secret_string" \
-  -e GOOGLE_API_KEY="your_api_key" \
-  llm-analysis-agent
-```
-
-### Deploy to HuggingFace Spaces
-
-1. Create a new Space with Docker SDK
-2. Push this repository to your Space
-3. Add secrets in Space settings:
-   - `EMAIL`
-   - `SECRET`
-   - `GOOGLE_API_KEY`
-4. The Space will automatically build and deploy
-
-## 🧠 How It Works
-
-### 1. Request Reception
-
-- FastAPI receives a POST request with quiz URL
-- Validates the secret against environment variables
-- Returns 200 OK and starts the agent in the background
-
-### 2. Agent Initialization
-
-- LangGraph creates a state machine with two nodes: `agent` and `tools`
-- The initial state contains the quiz URL as a user message
-
-### 3. Task Loop
-
-The agent follows this loop:
-
-```
-┌─────────────────────────────────────────┐
-│ 1. LLM analyzes current state           │
-│    - Reads quiz page instructions       │
-│    - Plans tool usage                   │
-└─────────────────┬───────────────────────┘
-                  ▼
-┌─────────────────────────────────────────┐
-│ 2. Tool execution                       │
-│    - Scrapes page / downloads files     │
-│    - Runs analysis code                 │
-│    - Submits answer                     │
-└─────────────────┬───────────────────────┘
-                  ▼
-┌─────────────────────────────────────────┐
-│ 3. Response evaluation                  │
-│    - Checks if answer is correct        │
-│    - Extracts next quiz URL (if exists) │
-└─────────────────┬───────────────────────┘
-                  ▼
-┌─────────────────────────────────────────┐
-│ 4. Decision                             │
-│    - If new URL exists: Loop to step 1  │
-│    - If no URL: Return "END"            │
-└─────────────────────────────────────────┘
-```
-
-### 4. State Management
-
-- All messages (user, assistant, tool) are stored in state
-- The LLM uses full history to make informed decisions
-- Recursion limit set to 200 to handle long quiz chains
-
-### 5. Completion
-
-- Agent returns "END" when no new URL is provided
-- Background task completes
-- Logs indicate success or failure
-
-## 📝 Key Design Decisions
-
-1. **LangGraph over Sequential Execution**: Allows flexible routing and complex decision-making
-2. **Background Processing**: Prevents HTTP timeouts for long-running quiz chains
-3. **Tool Modularity**: Each tool is independent and can be tested/debugged separately
-4. **Rate Limiting**: Prevents API quota exhaustion (9 req/min for Gemini)
-5. **Code Execution**: Dynamically generates and runs Python for complex data tasks
-6. **Playwright for Scraping**: Handles JavaScript-rendered pages that `requests` cannot
-7. **uv for Dependencies**: Fast package resolution and installation
-
-## 📄 License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-**Author**: Chenchu Vinay Boga
-**Course**: Tools in Data Science (TDS)
-**Institution**: IIT Madras
+Author
+Chenchu Vinay Boga — Tools in Data Science (TDS), IIT Madras
